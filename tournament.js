@@ -102,6 +102,14 @@ class TournamentManager {
     // Ensure 8 players
     if (pool.length < 8) this.fillWithBots();
 
+    // Ensure the human player starts as p1 in the first quarter-final match for consistency
+    const userIndex = pool.findIndex(p => p.isUser);
+    if (userIndex > 0) {
+      const temp = pool[0];
+      pool[0] = pool[userIndex];
+      pool[userIndex] = temp;
+    }
+
     this.bracket.quarterFinals[0].p1 = pool[0];
     this.bracket.quarterFinals[0].p2 = pool[1];
     this.bracket.quarterFinals[1].p1 = pool[2];
@@ -115,25 +123,39 @@ class TournamentManager {
   findUserNextMatch() {
     if (!this.userPlayer) return null;
 
+    const normalizeUserAsP1 = (match, stage) => {
+      if (!match || match.winner) return null;
+      if (match.p1?.id === this.userPlayer.id || match.p2?.id === this.userPlayer.id) {
+        // Normalize so the user is ALWAYS p1 (Team 1, Left side) for 100% consistent gameplay
+        if (match.p2?.id === this.userPlayer.id) {
+          const temp = match.p1;
+          match.p1 = match.p2;
+          match.p2 = temp;
+          // Also swap scores if any recorded
+          if (match.score) {
+            match.score = [match.score[1], match.score[0]];
+          }
+        }
+        return { stage, match };
+      }
+      return null;
+    };
+
     // Check Quarterfinals
     for (const m of this.bracket.quarterFinals) {
-      if ((m.p1?.id === this.userPlayer.id || m.p2?.id === this.userPlayer.id) && !m.winner) {
-        return { stage: 'Quarter-Final', match: m };
-      }
+      const res = normalizeUserAsP1(m, 'Quarter-Final');
+      if (res) return res;
     }
 
     // Check Semifinals
     for (const m of this.bracket.semiFinals) {
-      if ((m.p1?.id === this.userPlayer.id || m.p2?.id === this.userPlayer.id) && !m.winner) {
-        return { stage: 'Semi-Final', match: m };
-      }
+      const res = normalizeUserAsP1(m, 'Semi-Final');
+      if (res) return res;
     }
 
     // Check Final
-    const fm = this.bracket.final;
-    if ((fm.p1?.id === this.userPlayer.id || fm.p2?.id === this.userPlayer.id) && !fm.winner) {
-      return { stage: 'Grand Final', match: fm };
-    }
+    const res = normalizeUserAsP1(this.bracket.final, 'Grand Final');
+    if (res) return res;
 
     return null;
   }

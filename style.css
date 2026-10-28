@@ -633,11 +633,12 @@ body {
   font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;
-  color: var(--accent-gold);
-  background: rgba(0,0,0,0.5);
-  padding: 2px 8px;
+  color: #00f0ff;
+  background: rgba(0,0,0,0.6);
+  padding: 2px 10px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 183, 3, 0.4);
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
 }
 
 .match-round-tag {

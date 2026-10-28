@@ -1,6 +1,6 @@
 /* ===================================================
-   TORNA - FOOTBALL CANVAS PHYSICS & GAME LOOP
-   Tactical Physics Soccer with Touch & Drag Controls
+   TORNA - FOOTBALL CANVAS PHYSICS & GRAPHICS ENGINE
+   Tactical Physics Soccer with Neon Laser Aim & 3D Visuals
 =================================================== */
 
 class FootballGame {
@@ -15,7 +15,7 @@ class FootballGame {
     this.canvas.height = this.height;
 
     // Goals settings
-    this.goalWidth = 30;
+    this.goalWidth = 32;
     this.goalHeight = 170;
     this.goalY = (this.height - this.goalHeight) / 2;
 
@@ -30,12 +30,18 @@ class FootballGame {
     this.ball = null;
     this.team1Discs = [];
     this.team2Discs = [];
-    this.currentTurn = 1; // 1 = Team 1 (Left), 2 = Team 2 (Right)
+    this.currentTurn = 1; // 1 = Team 1 (Left - User), 2 = Team 2 (Right - Opponent)
     this.scores = [0, 0];
     this.targetGoals = 2;
     this.isMoving = false;
     this.isGoalScored = false;
     this.isGameOver = false;
+
+    // Visuals & Graphics state
+    this.ballAngle = 0;
+    this.animTick = 0;
+    this.particles = [];
+    this.speedTrails = [];
 
     // Drag & Aim controls
     this.selectedDisc = null;
@@ -60,13 +66,29 @@ class FootballGame {
   }
 
   setupMatch(p1, p2, roundName = "Quarter-Final", isPractice = false) {
-    this.t1Name = p1?.name || "Player 1";
-    this.t2Name = p2?.name || "Player 2";
-    this.t1Color = this.getTeamColor(p1?.team, "#00e676");
-    this.t2Color = this.getTeamColor(p2?.team, "#00b0ff");
-    this.isT2Bot = !p2?.isUser;
+    // CRITICAL: Ensure local human user is ALWAYS Team 1 (Left Side)
+    // This guarantees 100% turn consistency across all 3 tournament rounds!
+    let localPlayer = p1;
+    let opponentPlayer = p2;
+    if (p2 && p2.isUser && !p1?.isUser) {
+      localPlayer = p2;
+      opponentPlayer = p1;
+    }
+
+    this.t1Name = localPlayer?.name || "Player 1";
+    this.t2Name = opponentPlayer?.name || "Player 2";
+    this.t1Color = this.getTeamColor(localPlayer?.team, "#00e676");
+    this.t2Color = this.getTeamColor(opponentPlayer?.team, "#00b0ff");
+    this.isT2Bot = !opponentPlayer?.isUser;
     this.scores = [0, 0];
     this.isGameOver = false;
+    this.isMoving = false;
+    this.selectedDisc = null;
+    this.isDragging = false;
+    this.particles = [];
+    this.speedTrails = [];
+
+    if (this.timerInterval) clearInterval(this.timerInterval);
 
     document.getElementById('hud-p1-name').textContent = this.t1Name;
     document.getElementById('hud-p2-name').textContent = this.t2Name;
@@ -77,6 +99,7 @@ class FootballGame {
     document.getElementById('hud-round-tag').textContent = roundName;
 
     this.resetPitch();
+    // User ALWAYS takes opening kickoff turn 1
     this.startTurn(1);
   }
 
@@ -100,18 +123,18 @@ class FootballGame {
     };
 
     // Formations (3v3 tactical setup: GK, Defender, Striker)
-    // Team 1 (Left to Right)
+    // Team 1 (Left to Right) - Human Player
     this.team1Discs = [
       { id: 'p1_gk', x: 80, y: this.height / 2, vx: 0, vy: 0, radius: this.discRadius, team: 1, num: '1' },
-      { id: 'p1_df', x: 230, y: this.height / 2 - 70, vx: 0, vy: 0, radius: this.discRadius, team: 1, num: '4' },
-      { id: 'p1_st', x: 230, y: this.height / 2 + 70, vx: 0, vy: 0, radius: this.discRadius, team: 1, num: '9' }
+      { id: 'p1_df', x: 230, y: this.height / 2 - 75, vx: 0, vy: 0, radius: this.discRadius, team: 1, num: '4' },
+      { id: 'p1_st', x: 230, y: this.height / 2 + 75, vx: 0, vy: 0, radius: this.discRadius, team: 1, num: '9' }
     ];
 
-    // Team 2 (Right to Left)
+    // Team 2 (Right to Left) - Opponent
     this.team2Discs = [
       { id: 'p2_gk', x: this.width - 80, y: this.height / 2, vx: 0, vy: 0, radius: this.discRadius, team: 2, num: '1' },
-      { id: 'p2_df', x: this.width - 230, y: this.height / 2 - 70, vx: 0, vy: 0, radius: this.discRadius, team: 2, num: '4' },
-      { id: 'p2_st', x: this.width - 230, y: this.height / 2 + 70, vx: 0, vy: 0, radius: this.discRadius, team: 2, num: '9' }
+      { id: 'p2_df', x: this.width - 230, y: this.height / 2 - 75, vx: 0, vy: 0, radius: this.discRadius, team: 2, num: '4' },
+      { id: 'p2_st', x: this.width - 230, y: this.height / 2 + 75, vx: 0, vy: 0, radius: this.discRadius, team: 2, num: '9' }
     ];
 
     this.isGoalScored = false;
@@ -134,9 +157,9 @@ class FootballGame {
       }
     }, 1000);
 
-    // If it's Bot's turn, trigger AI move after a short realistic hesitation
+    // If it's Bot's turn, trigger AI move after realistic human-like hesitation
     if (this.currentTurn === 2 && this.isT2Bot && !this.isMoving) {
-      setTimeout(() => this.executeBotMove(), 900);
+      setTimeout(() => this.executeBotMove(), 850);
     }
   }
 
@@ -148,19 +171,24 @@ class FootballGame {
   updateHUDTurnIndicator() {
     const p1Label = document.querySelector('.left-side .sub-label');
     const p2Label = document.querySelector('.right-side .sub-label');
+    const timerDisplay = document.getElementById('turn-timer-display');
 
     if (this.currentTurn === 1) {
       p1Label.textContent = "YOUR TURN";
-      p1Label.style.color = "var(--accent-green)";
+      p1Label.style.color = "#00e676";
       p2Label.textContent = "WAITING";
       p2Label.style.color = "var(--text-muted)";
+      timerDisplay.style.borderColor = "#00f0ff";
+      timerDisplay.style.color = "#00f0ff";
     } else {
       p1Label.textContent = "WAITING";
       p1Label.style.color = "var(--text-muted)";
       p2Label.textContent = this.isT2Bot ? "BOT THINKING..." : "THEIR TURN";
-      p2Label.style.color = "var(--accent-gold)";
+      p2Label.style.color = "#ffb703";
+      timerDisplay.style.borderColor = "#ffb703";
+      timerDisplay.style.color = "#ffb703";
     }
-    document.getElementById('turn-timer-display').textContent = this.turnTimeLeft + 's';
+    timerDisplay.textContent = this.turnTimeLeft + 's';
   }
 
   // BOT AI MOVE CALCULATION
@@ -187,10 +215,10 @@ class FootballGame {
 
     // Position behind the ball to hit towards goal
     const hitAngle = Math.atan2(this.ball.y - bestDisc.y, this.ball.x - bestDisc.x);
-    // Blend aim with slight human-like randomness
-    const finalAngle = (ballToGoalAngle * 0.4 + hitAngle * 0.6) + (Math.random() - 0.5) * 0.2;
+    // Blend aim with slight realistic randomness
+    const finalAngle = (ballToGoalAngle * 0.4 + hitAngle * 0.6) + (Math.random() - 0.5) * 0.18;
 
-    const power = Math.min(this.maxPower * 0.85, 12 + Math.random() * 6);
+    const power = Math.min(this.maxPower * 0.85, 13 + Math.random() * 5.5);
     bestDisc.vx = Math.cos(finalAngle) * power;
     bestDisc.vy = Math.sin(finalAngle) * power;
 
@@ -217,7 +245,7 @@ class FootballGame {
       if (this.isMoving || this.currentTurn !== 1 || this.isGameOver) return;
       const pos = getCanvasPos(e);
 
-      // Check if clicked on any of player's discs
+      // Check if clicked on any of human player's discs (Team 1)
       for (const disc of this.team1Discs) {
         const dist = Math.hypot(disc.x - pos.x, disc.y - pos.y);
         if (dist <= disc.radius * 1.5) {
@@ -246,12 +274,15 @@ class FootballGame {
       const dragDist = Math.hypot(dx, dy);
 
       if (dragDist > 10) {
-        const powerRatio = Math.min(dragDist / 120, 1.0);
+        const powerRatio = Math.min(dragDist / 125, 1.0);
         const power = powerRatio * this.maxPower;
         const angle = Math.atan2(dy, dx);
 
         this.selectedDisc.vx = Math.cos(angle) * power;
         this.selectedDisc.vy = Math.sin(angle) * power;
+
+        // Spawn kick dust particles
+        this.spawnImpactParticles(this.selectedDisc.x, this.selectedDisc.y, '#00f0ff', 12);
 
         if (window.sound) window.sound.playKick();
         this.isMoving = true;
@@ -271,9 +302,45 @@ class FootballGame {
     window.addEventListener('touchend', handleEnd);
   }
 
+  // PARTICLE SYSTEM
+  spawnImpactParticles(x, y, color, count = 10) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.5 + Math.random() * 4.5;
+      this.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: 2 + Math.random() * 2.5,
+        color: color,
+        life: 1.0,
+        decay: 0.03 + Math.random() * 0.03
+      });
+    }
+  }
+
+  spawnGoalConfetti(goalX, goalY) {
+    const colors = ['#00e676', '#00f0ff', '#ff007f', '#ffd60a', '#ffffff', '#7928ca'];
+    for (let i = 0; i < 70; i++) {
+      const angle = (goalX < 100) ? (Math.random() * Math.PI - Math.PI / 2) : (Math.random() * Math.PI + Math.PI / 2);
+      const speed = 3 + Math.random() * 9;
+      this.particles.push({
+        x: goalX,
+        y: goalY + (Math.random() - 0.5) * this.goalHeight,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: 3 + Math.random() * 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        life: 1.0,
+        decay: 0.015 + Math.random() * 0.015
+      });
+    }
+  }
+
   // MAIN PHYSICS UPDATE LOOP
   updatePhysics() {
     if (!this.ball) return;
+    this.animTick++;
     let moving = false;
     const threshold = 0.08;
 
@@ -282,8 +349,46 @@ class FootballGame {
     this.ball.y += this.ball.vy;
     this.ball.vx *= this.friction;
     this.ball.vy *= this.friction;
-    if (Math.hypot(this.ball.vx, this.ball.vy) > threshold) moving = true;
-    else { this.ball.vx = 0; this.ball.vy = 0; }
+
+    const ballSpeed = Math.hypot(this.ball.vx, this.ball.vy);
+    if (ballSpeed > threshold) {
+      moving = true;
+      this.ballAngle += ballSpeed * 0.06;
+
+      // Speed trail for high-power blasts
+      if (ballSpeed > 6 && this.animTick % 2 === 0) {
+        this.speedTrails.push({
+          x: this.ball.x,
+          y: this.ball.y,
+          radius: this.ball.radius * 0.8,
+          alpha: 0.6
+        });
+      }
+    } else {
+      this.ball.vx = 0;
+      this.ball.vy = 0;
+    }
+
+    // Update speed trails
+    for (let i = this.speedTrails.length - 1; i >= 0; i--) {
+      this.speedTrails[i].alpha -= 0.07;
+      if (this.speedTrails[i].alpha <= 0) {
+        this.speedTrails.splice(i, 1);
+      }
+    }
+
+    // Update particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+      }
+    }
 
     // Update all discs
     const allDiscs = [...this.team1Discs, ...this.team2Discs];
@@ -316,41 +421,53 @@ class FootballGame {
 
     for (const b of allBodies) {
       // Top & Bottom turf boundaries
-      if (b.y - b.radius < 0) {
-        b.y = b.radius;
+      if (b.y - b.radius < 18) {
+        b.y = 18 + b.radius;
         b.vy *= -0.85;
-        if (b === this.ball && window.sound) window.sound.playPostRebound();
-      } else if (b.y + b.radius > this.height) {
-        b.y = this.height - b.radius;
+        if (b === this.ball) {
+          this.spawnImpactParticles(b.x, b.y, '#ffffff', 5);
+          if (window.sound) window.sound.playPostRebound();
+        }
+      } else if (b.y + b.radius > this.height - 18) {
+        b.y = this.height - 18 - b.radius;
         b.vy *= -0.85;
-        if (b === this.ball && window.sound) window.sound.playPostRebound();
+        if (b === this.ball) {
+          this.spawnImpactParticles(b.x, b.y, '#ffffff', 5);
+          if (window.sound) window.sound.playPostRebound();
+        }
       }
 
       // Left boundary (Goal aperture or Wall)
-      if (b.x - b.radius < 0) {
+      if (b.x - b.radius < 12) {
         const inGoalY = b.y > this.goalY && b.y < this.goalY + this.goalHeight;
         if (inGoalY && b === this.ball) {
           // Goal for Team 2!
           this.triggerGoal(2);
           return;
         } else {
-          b.x = b.radius;
+          b.x = 12 + b.radius;
           b.vx *= -0.85;
-          if (b === this.ball && window.sound) window.sound.playPostRebound();
+          if (b === this.ball) {
+            this.spawnImpactParticles(b.x, b.y, '#ffffff', 5);
+            if (window.sound) window.sound.playPostRebound();
+          }
         }
       }
 
       // Right boundary (Goal aperture or Wall)
-      if (b.x + b.radius > this.width) {
+      if (b.x + b.radius > this.width - 12) {
         const inGoalY = b.y > this.goalY && b.y < this.goalY + this.goalHeight;
         if (inGoalY && b === this.ball) {
-          // Goal for Team 1!
+          // Goal for Team 1 (User)!
           this.triggerGoal(1);
           return;
         } else {
-          b.x = this.width - b.radius;
+          b.x = this.width - 12 - b.radius;
           b.vx *= -0.85;
-          if (b === this.ball && window.sound) window.sound.playPostRebound();
+          if (b === this.ball) {
+            this.spawnImpactParticles(b.x, b.y, '#ffffff', 5);
+            if (window.sound) window.sound.playPostRebound();
+          }
         }
       }
     }
@@ -392,12 +509,16 @@ class FootballGame {
       // Elastic momentum exchange
       const kx = c1.vx - c2.vx;
       const ky = c1.vy - c2.vy;
-      const p = 2 * (nx * kx + ny * ky) / 2; // Equal mass approximation
+      const p = 2 * (nx * kx + ny * ky) / 2;
 
       c1.vx -= p * nx * restitution;
       c1.vy -= p * ny * restitution;
       c2.vx += p * nx * restitution;
       c2.vy += p * ny * restitution;
+
+      const midX = (c1.x + c2.x) / 2;
+      const midY = (c1.y + c2.y) / 2;
+      this.spawnImpactParticles(midX, midY, '#00f0ff', 6);
 
       if ((c1 === this.ball || c2 === this.ball) && window.sound) {
         window.sound.playKick();
@@ -415,6 +536,10 @@ class FootballGame {
     document.getElementById('hud-p1-score').textContent = this.scores[0];
     document.getElementById('hud-p2-score').textContent = this.scores[1];
 
+    // Confetti explosion from the net
+    const goalX = scoringTeam === 1 ? this.width - 15 : 15;
+    this.spawnGoalConfetti(goalX, this.goalY + this.goalHeight / 2);
+
     if (window.sound) window.sound.playGoalCheer();
 
     // Show goal banner
@@ -431,6 +556,7 @@ class FootballGame {
         this.finishMatch();
       } else {
         this.resetPitch();
+        // Conceding team kicks off
         this.startTurn(scoringTeam === 1 ? 2 : 1);
       }
     }, 2200);
@@ -441,7 +567,6 @@ class FootballGame {
     if (this.timerInterval) clearInterval(this.timerInterval);
 
     const winnerId = this.scores[0] > this.scores[1] ? 1 : 2;
-    const winnerName = winnerId === 1 ? this.t1Name : this.t2Name;
 
     setTimeout(() => {
       if (window.onMatchEndCallback) {
@@ -450,159 +575,532 @@ class FootballGame {
     }, 500);
   }
 
-  // RENDER PITCH & ASSETS
+  // ==========================================
+  // GRAPHICS & RENDERING SYSTEM
+  // ==========================================
+
   render() {
     if (!this.ball) return;
     this.ctx.clearRect(0, 0, this.width, this.height);
 
-    // 1. Draw Football Turf Grass with Alternate Stripes
-    const stripeWidth = 60;
-    for (let x = 0; x < this.width; x += stripeWidth) {
-      this.ctx.fillStyle = (Math.floor(x / stripeWidth) % 2 === 0) ? '#1f533a' : '#1a4933';
-      this.ctx.fillRect(x, 0, stripeWidth, this.height);
-    }
+    // 1. STADIUM BACKGROUND & LED BOARDS
+    this.renderStadiumBorders();
 
-    // 2. White Pitch Markings
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-    this.ctx.lineWidth = 4;
+    // 2. DETAILED GRASS TURF
+    this.renderPitchTurf();
 
-    // Pitch Border
-    this.ctx.strokeRect(6, 6, this.width - 12, this.height - 12);
+    // 3. PITCH MARKINGS & WATERMARK
+    this.renderPitchMarkings();
 
-    // Halfway Line
-    this.ctx.beginPath();
-    this.ctx.moveTo(this.width / 2, 0);
-    this.ctx.lineTo(this.width / 2, this.height);
-    this.ctx.stroke();
+    // 4. 3D METALLIC GOALS & HEXAGONAL NETTING
+    this.renderGoals();
 
-    // Center Circle & Spot
-    this.ctx.beginPath();
-    this.ctx.arc(this.width / 2, this.height / 2, 70, 0, Math.PI * 2);
-    this.ctx.stroke();
+    // 5. CORNER FLAGS
+    this.renderCornerFlags();
 
-    this.ctx.fillStyle = '#fff';
-    this.ctx.beginPath();
-    this.ctx.arc(this.width / 2, this.height / 2, 5, 0, Math.PI * 2);
-    this.ctx.fill();
+    // 6. SPEED TRAILS & PARTICLES
+    this.renderSpeedTrails();
+    this.renderParticles();
 
-    // Penalty Boxes & Spots
-    this.ctx.strokeRect(6, (this.height - 240) / 2, 130, 240);
-    this.ctx.strokeRect(this.width - 136, (this.height - 240) / 2, 130, 240);
-
-    // Goal Nets
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    this.ctx.fillRect(0, this.goalY, 8, this.goalHeight);
-    this.ctx.fillRect(this.width - 8, this.goalY, 8, this.goalHeight);
-
-    // Goal Posts
-    this.ctx.fillStyle = '#ffb703';
-    this.ctx.beginPath();
-    this.ctx.arc(8, this.goalY, 7, 0, Math.PI * 2);
-    this.ctx.arc(8, this.goalY + this.goalHeight, 7, 0, Math.PI * 2);
-    this.ctx.arc(this.width - 8, this.goalY, 7, 0, Math.PI * 2);
-    this.ctx.arc(this.width - 8, this.goalY + this.goalHeight, 7, 0, Math.PI * 2);
-    this.ctx.fill();
-
-    // 3. Render Aiming Guideline if dragging
+    // 7. NEON LASER AIMING POINTER (ELECTRIC CYAN - NO YELLOW)
     if (this.isDragging && this.selectedDisc) {
-      this.renderAimGuide();
+      this.renderNeonAimGuide();
     }
 
-    // 4. Render Discs
-    for (const d of this.team1Discs) this.renderDisc(d, this.t1Color, '#fff');
-    for (const d of this.team2Discs) this.renderDisc(d, this.t2Color, '#fff');
+    // 8. 3D GLOSSY PLAYER DISCS
+    for (const d of this.team1Discs) this.renderDisc(d, this.t1Color, '#ffffff');
+    for (const d of this.team2Discs) this.renderDisc(d, this.t2Color, '#ffffff');
 
-    // 5. Render Ball
+    // 9. 3D SOCCER BALL WITH ROTATION
     this.renderBall();
   }
 
-  renderDisc(disc, color, textCol) {
+  renderStadiumBorders() {
+    // Outer stadium border
+    this.ctx.fillStyle = '#080d12';
+    this.ctx.fillRect(0, 0, this.width, this.height);
+
+    // Top LED Banner Board
+    this.ctx.fillStyle = '#0b1622';
+    this.ctx.fillRect(0, 0, this.width, 18);
+    // Bottom LED Banner Board
+    this.ctx.fillRect(0, this.height - 18, this.width, 18);
+
+    // Scrolling LED Text effect
+    const offset = (this.animTick * 0.8) % 360;
     this.ctx.save();
-    // Drop shadow
-    this.ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    this.ctx.shadowBlur = 8;
-    this.ctx.shadowOffsetY = 4;
+    this.ctx.font = 'bold 9px "Teko", sans-serif';
+    this.ctx.letterSpacing = '1px';
+    this.ctx.fillStyle = '#00f0ff';
+    this.ctx.shadowColor = '#00f0ff';
+    this.ctx.shadowBlur = 4;
+    const adText = "⚽ TORNA PREMIER TOURNAMENT  •  🏆 WIN KSH 560 INSTANT CASH  •  ⚡ M-PESA PAYOUTS  •  🇰🇪 FAIR PLAY ARENA  •  ";
+    for (let x = -offset; x < this.width + 400; x += 360) {
+      this.ctx.fillText(adText, x, 13);
+      this.ctx.fillText(adText, x, this.height - 5);
+    }
+    this.ctx.restore();
+  }
 
-    // Disc Base Outer Ring
+  renderPitchTurf() {
+    const turfX = 12;
+    const turfY = 18;
+    const turfW = this.width - 24;
+    const turfH = this.height - 36;
+
+    // Base Grass Green
+    this.ctx.save();
     this.ctx.beginPath();
-    this.ctx.arc(disc.x, disc.y, disc.radius, 0, Math.PI * 2);
-    this.ctx.fillStyle = '#111';
-    this.ctx.fill();
-    this.ctx.lineWidth = 3;
-    this.ctx.strokeStyle = color;
-    this.ctx.stroke();
+    this.ctx.rect(turfX, turfY, turfW, turfH);
+    this.ctx.clip();
 
-    // Inner Jersey Colored Core
-    this.ctx.shadowColor = 'transparent';
-    this.ctx.beginPath();
-    this.ctx.arc(disc.x, disc.y, disc.radius - 4, 0, Math.PI * 2);
-    this.ctx.fillStyle = color;
-    this.ctx.fill();
+    // Alternating Mowed Grass Bands with high contrast
+    const bandWidth = 56;
+    for (let x = turfX; x < turfX + turfW; x += bandWidth) {
+      const isEven = Math.floor((x - turfX) / bandWidth) % 2 === 0;
+      this.ctx.fillStyle = isEven ? '#1b4d32' : '#143d27';
+      this.ctx.fillRect(x, turfY, bandWidth, turfH);
+    }
 
-    // Disc Player Number
-    this.ctx.fillStyle = textCol;
-    this.ctx.font = 'bold 14px Inter, sans-serif';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(disc.num, disc.x, disc.y);
+    // Subtle cross-cut diagonal lawn stripes for authentic stadium feel
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+    this.ctx.lineWidth = 14;
+    for (let d = -turfH; d < turfW + turfH; d += 40) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(turfX + d, turfY);
+      this.ctx.lineTo(turfX + d + turfH, turfY + turfH);
+      this.ctx.stroke();
+    }
+
+    // Stadium Floodlight Vignette (brighter in center, darker on sides)
+    const radial = this.ctx.createRadialGradient(
+      this.width / 2, this.height / 2, 80,
+      this.width / 2, this.height / 2, 420
+    );
+    radial.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+    radial.addColorStop(0.7, 'rgba(0, 0, 0, 0.0)');
+    radial.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+    this.ctx.fillStyle = radial;
+    this.ctx.fillRect(turfX, turfY, turfW, turfH);
 
     this.ctx.restore();
   }
 
-  renderBall() {
+  renderPitchMarkings() {
+    const px = 12;
+    const py = 18;
+    const pw = this.width - 24;
+    const ph = this.height - 36;
+
     this.ctx.save();
-    // Shadow
-    this.ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    this.ctx.lineWidth = 3;
+
+    // Pitch Boundary Line
+    this.ctx.strokeRect(px + 4, py + 4, pw - 8, ph - 8);
+
+    // Halfway Line
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.width / 2, py + 4);
+    this.ctx.lineTo(this.width / 2, py + ph - 4);
+    this.ctx.stroke();
+
+    // Center Circle
+    this.ctx.beginPath();
+    this.ctx.arc(this.width / 2, this.height / 2, 75, 0, Math.PI * 2);
+    this.ctx.stroke();
+
+    // Center Spot
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.beginPath();
+    this.ctx.arc(this.width / 2, this.height / 2, 4.5, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // WATERMARK LOGO IN CENTER CIRCLE
+    this.ctx.font = 'bold 22px "Teko", sans-serif';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    this.ctx.fillText("TORNA", this.width / 2, this.height / 2 - 14);
+    this.ctx.font = '9px "Inter", sans-serif';
+    this.ctx.fillText("CHAMPIONSHIP", this.width / 2, this.height / 2 + 10);
+
+    // Penalty Boxes & Goal Areas
+    const boxH = 240;
+    const boxW = 125;
+    const boxY = (this.height - boxH) / 2;
+
+    // Left Penalty Box & Spot
+    this.ctx.strokeRect(px + 4, boxY, boxW, boxH);
+    this.ctx.strokeRect(px + 4, (this.height - 130) / 2, 45, 130);
+    this.ctx.beginPath();
+    this.ctx.arc(px + 95, this.height / 2, 3.5, 0, Math.PI * 2);
+    this.ctx.fill();
+    // Penalty Arc
+    this.ctx.beginPath();
+    this.ctx.arc(px + 95, this.height / 2, 45, -0.7, 0.7);
+    this.ctx.stroke();
+
+    // Right Penalty Box & Spot
+    this.ctx.strokeRect(px + pw - 4 - boxW, boxY, boxW, boxH);
+    this.ctx.strokeRect(px + pw - 4 - 45, (this.height - 130) / 2, 45, 130);
+    this.ctx.beginPath();
+    this.ctx.arc(px + pw - 95, this.height / 2, 3.5, 0, Math.PI * 2);
+    this.ctx.fill();
+    // Penalty Arc
+    this.ctx.beginPath();
+    this.ctx.arc(px + pw - 95, this.height / 2, 45, Math.PI - 0.7, Math.PI + 0.7);
+    this.ctx.stroke();
+
+    this.ctx.restore();
+  }
+
+  renderGoals() {
+    this.ctx.save();
+
+    // Left Goal Netting (3D mesh)
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    this.ctx.fillRect(0, this.goalY, 16, this.goalHeight);
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    this.ctx.lineWidth = 1;
+    for (let y = this.goalY; y <= this.goalY + this.goalHeight; y += 12) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, y);
+      this.ctx.lineTo(16, y);
+      this.ctx.stroke();
+    }
+
+    // Right Goal Netting
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    this.ctx.fillRect(this.width - 16, this.goalY, 16, this.goalHeight);
+    for (let y = this.goalY; y <= this.goalY + this.goalHeight; y += 12) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.width - 16, y);
+      this.ctx.lineTo(this.width, y);
+      this.ctx.stroke();
+    }
+
+    // 3D Metallic White Goal Posts (Left)
+    this.render3DPost(16, this.goalY);
+    this.render3DPost(16, this.goalY + this.goalHeight);
+
+    // 3D Metallic White Goal Posts (Right)
+    this.render3DPost(this.width - 16, this.goalY);
+    this.render3DPost(this.width - 16, this.goalY + this.goalHeight);
+
+    this.ctx.restore();
+  }
+
+  render3DPost(x, y) {
+    this.ctx.save();
+    // Post shadow
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
     this.ctx.shadowBlur = 6;
     this.ctx.shadowOffsetY = 3;
 
-    // White core
-    this.ctx.beginPath();
-    this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
-    this.ctx.fillStyle = '#f8fafc';
-    this.ctx.fill();
-    this.ctx.lineWidth = 2;
-    this.ctx.strokeStyle = '#000';
-    this.ctx.stroke();
+    // Metallic white-silver radial gradient
+    const grad = this.ctx.createRadialGradient(x - 2, y - 2, 1, x, y, 7);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.6, '#e2e8f0');
+    grad.addColorStop(1, '#94a3b8');
 
-    // Classic football pentagon dots
-    this.ctx.fillStyle = '#1e293b';
+    this.ctx.fillStyle = grad;
     this.ctx.beginPath();
-    this.ctx.arc(this.ball.x, this.ball.y, 4, 0, Math.PI * 2);
+    this.ctx.arc(x, y, 6.5, 0, Math.PI * 2);
     this.ctx.fill();
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeStyle = '#475569';
+    this.ctx.stroke();
 
     this.ctx.restore();
   }
 
-  renderAimGuide() {
+  renderCornerFlags() {
+    const corners = [
+      { x: 16, y: 22 },
+      { x: this.width - 16, y: 22 },
+      { x: 16, y: this.height - 22 },
+      { x: this.width - 16, y: this.height - 22 }
+    ];
+
+    this.ctx.save();
+    for (const c of corners) {
+      // Corner quadrant arc
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.arc(c.x, c.y, 14, 0, Math.PI * 2);
+      this.ctx.stroke();
+
+      // Flag pole
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(c.x - 1, c.y - 12, 2, 12);
+
+      // Red pennant flag
+      this.ctx.fillStyle = '#ff1744';
+      this.ctx.beginPath();
+      this.ctx.moveTo(c.x + 1, c.y - 12);
+      this.ctx.lineTo(c.x + 10, c.y - 8);
+      this.ctx.lineTo(c.x + 1, c.y - 4);
+      this.ctx.closePath();
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+  }
+
+  renderSpeedTrails() {
+    this.ctx.save();
+    for (const t of this.speedTrails) {
+      this.ctx.fillStyle = `rgba(0, 240, 255, ${t.alpha * 0.35})`;
+      this.ctx.beginPath();
+      this.ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+  }
+
+  renderParticles() {
+    this.ctx.save();
+    for (const p of this.particles) {
+      this.ctx.fillStyle = p.color;
+      this.ctx.globalAlpha = Math.max(0, p.life);
+      this.ctx.beginPath();
+      this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+  }
+
+  // ==========================================
+  // NEON LASER AIMING POINTER (ELECTRIC CYAN)
+  // Replaced old yellow with high-tech cyan/aqua laser
+  // ==========================================
+  renderNeonAimGuide() {
     const dx = this.dragStart.x - this.dragCurrent.x;
     const dy = this.dragStart.y - this.dragCurrent.y;
     const dist = Math.hypot(dx, dy);
-    if (dist < 5) return;
+    if (dist < 6) return;
 
     const angle = Math.atan2(dy, dx);
-    const powerRatio = Math.min(dist / 120, 1.0);
+    const powerRatio = Math.min(dist / 125, 1.0);
 
-    // Aim Line with dotted power gradient
+    const laserCyan = '#00f0ff';
+    const laserGlow = '#00e5ff';
+
     this.ctx.save();
-    this.ctx.lineWidth = 4;
-    this.ctx.setLineDash([6, 6]);
-    this.ctx.strokeStyle = `rgba(255, 183, 3, ${0.4 + powerRatio * 0.6})`;
 
-    const lineLen = 70 + powerRatio * 100;
+    // 1. LASER TRAJECTORY LINE
+    const lineLen = 80 + powerRatio * 130;
     const endX = this.selectedDisc.x + Math.cos(angle) * lineLen;
     const endY = this.selectedDisc.y + Math.sin(angle) * lineLen;
+
+    // Outer Laser Glow
+    this.ctx.shadowColor = laserGlow;
+    this.ctx.shadowBlur = 12;
+    this.ctx.strokeStyle = `rgba(0, 240, 255, ${0.45 + powerRatio * 0.55})`;
+    this.ctx.lineWidth = 4 + powerRatio * 2;
+    this.ctx.setLineDash([8, 6]);
 
     this.ctx.beginPath();
     this.ctx.moveTo(this.selectedDisc.x, this.selectedDisc.y);
     this.ctx.lineTo(endX, endY);
     this.ctx.stroke();
 
-    // Arrow head
+    // Core Solid White-Cyan Line
+    this.ctx.shadowBlur = 0;
     this.ctx.setLineDash([]);
-    this.ctx.fillStyle = '#ffb703';
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    this.ctx.arc(endX, endY, 6, 0, Math.PI * 2);
+    this.ctx.moveTo(this.selectedDisc.x, this.selectedDisc.y);
+    this.ctx.lineTo(endX, endY);
+    this.ctx.stroke();
+
+    // 2. POWER BEADS ALONG LASER LINE
+    const numBeads = 5;
+    for (let i = 1; i <= numBeads; i++) {
+      const t = (i / (numBeads + 1));
+      const bx = this.selectedDisc.x + Math.cos(angle) * (lineLen * t);
+      const by = this.selectedDisc.y + Math.sin(angle) * (lineLen * t);
+
+      this.ctx.fillStyle = (t <= powerRatio) ? laserCyan : 'rgba(255, 255, 255, 0.4)';
+      this.ctx.beginPath();
+      this.ctx.arc(bx, by, 3, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+
+    // 3. TARGET RETICLE & ARROWHEAD (ELECTRIC CYAN)
+    this.ctx.shadowColor = laserCyan;
+    this.ctx.shadowBlur = 10;
+    this.ctx.fillStyle = laserCyan;
+    this.ctx.strokeStyle = '#ffffff';
+    this.ctx.lineWidth = 2;
+
+    // Diamond Crosshair at target tip
+    this.ctx.beginPath();
+    this.ctx.arc(endX, endY, 7 + powerRatio * 2, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.stroke();
+
+    // Inner White Dot
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.beginPath();
+    this.ctx.arc(endX, endY, 3, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // 4. POWER PERCENTAGE BADGE
+    const pct = Math.round(powerRatio * 100);
+    this.ctx.font = 'bold 12px "Inter", sans-serif';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00f0ff';
+    this.ctx.shadowColor = '#000000';
+    this.ctx.shadowBlur = 4;
+    this.ctx.fillText(`${pct}% POWER`, endX, endY - 14);
+
+    this.ctx.restore();
+  }
+
+  // ==========================================
+  // 3D GLOSSY PLAYER DISCS
+  // ==========================================
+  renderDisc(disc, color, textCol) {
+    this.ctx.save();
+
+    // Dynamic Pulsing Turn Aura for active human player discs
+    const isPlayerTurn = (this.currentTurn === 1 && disc.team === 1 && !this.isMoving && !this.isGameOver);
+    if (isPlayerTurn) {
+      const pulse = Math.sin(this.animTick * 0.1) * 3;
+      this.ctx.strokeStyle = '#00f0ff';
+      this.ctx.shadowColor = '#00f0ff';
+      this.ctx.shadowBlur = 10;
+      this.ctx.lineWidth = 2.5;
+      this.ctx.beginPath();
+      this.ctx.arc(disc.x, disc.y, disc.radius + 5 + pulse, 0, Math.PI * 2);
+      this.ctx.stroke();
+    }
+
+    // Disc Ground Shadow
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    this.ctx.shadowBlur = 10;
+    this.ctx.shadowOffsetY = 5;
+
+    // Outer Metallic Chrome Ring (Beveled edge)
+    const chromeGrad = this.ctx.createLinearGradient(
+      disc.x - disc.radius, disc.y - disc.radius,
+      disc.x + disc.radius, disc.y + disc.radius
+    );
+    chromeGrad.addColorStop(0, '#f8fafc');
+    chromeGrad.addColorStop(0.5, '#475569');
+    chromeGrad.addColorStop(1, '#0f172a');
+
+    this.ctx.fillStyle = chromeGrad;
+    this.ctx.beginPath();
+    this.ctx.arc(disc.x, disc.y, disc.radius, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Inner Jersey Colored Core with 3D Glossy Radial Gradient
+    this.ctx.shadowColor = 'transparent';
+    const jerseyGrad = this.ctx.createRadialGradient(
+      disc.x - 6, disc.y - 6, 2,
+      disc.x, disc.y, disc.radius - 4
+    );
+    jerseyGrad.addColorStop(0, '#ffffff');
+    jerseyGrad.addColorStop(0.25, color);
+    jerseyGrad.addColorStop(1, '#000000');
+
+    this.ctx.fillStyle = jerseyGrad;
+    this.ctx.beginPath();
+    this.ctx.arc(disc.x, disc.y, disc.radius - 4, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Jersey Team Ring Accent
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.beginPath();
+    this.ctx.arc(disc.x, disc.y, disc.radius - 8, 0, Math.PI * 2);
+    this.ctx.stroke();
+
+    // Jersey Squad Number with 3D Shadow
+    this.ctx.fillStyle = '#000000';
+    this.ctx.font = 'bold 15px "Inter", sans-serif';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(disc.num, disc.x + 1, disc.y + 1);
+
+    this.ctx.fillStyle = textCol;
+    this.ctx.fillText(disc.num, disc.x, disc.y);
+
+    this.ctx.restore();
+  }
+
+  // ==========================================
+  // 3D SOCCER BALL WITH ROTATION & SHADOW
+  // ==========================================
+  renderBall() {
+    this.ctx.save();
+
+    // Dynamic Ball Shadow (stretches with movement)
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    this.ctx.shadowBlur = 8;
+    this.ctx.shadowOffsetY = 4;
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    this.ctx.beginPath();
+    this.ctx.ellipse(this.ball.x, this.ball.y + 4, this.ball.radius * 1.1, this.ball.radius * 0.7, 0, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // 3D Sphere Radial Lighting
+    this.ctx.shadowColor = 'transparent';
+    const sphereGrad = this.ctx.createRadialGradient(
+      this.ball.x - 5, this.ball.y - 5, 2,
+      this.ball.x, this.ball.y, this.ball.radius
+    );
+    sphereGrad.addColorStop(0, '#ffffff');
+    sphereGrad.addColorStop(0.7, '#e2e8f0');
+    sphereGrad.addColorStop(1, '#64748b');
+
+    this.ctx.fillStyle = sphereGrad;
+    this.ctx.beginPath();
+    this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.lineWidth = 1.5;
+    this.ctx.strokeStyle = '#334155';
+    this.ctx.stroke();
+
+    // ROTATING TELSTAR PENTAGONS (Oriented to this.ballAngle)
+    this.ctx.save();
+    this.ctx.translate(this.ball.x, this.ball.y);
+    this.ctx.rotate(this.ballAngle);
+
+    // Center Pentagon
+    this.ctx.fillStyle = '#0f172a';
+    this.ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
+      const px = Math.cos(a) * 5;
+      const py = Math.sin(a) * 5;
+      if (i === 0) this.ctx.moveTo(px, py);
+      else this.ctx.lineTo(px, py);
+    }
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Perimeter Pentagons
+    for (let p = 0; p < 3; p++) {
+      const ringAngle = (p * 2 * Math.PI / 3) + Math.PI / 6;
+      const cx = Math.cos(ringAngle) * 9.5;
+      const cy = Math.sin(ringAngle) * 9.5;
+
+      this.ctx.beginPath();
+      this.ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+
+    this.ctx.restore();
+
+    // Specular Highlight Glint
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    this.ctx.beginPath();
+    this.ctx.arc(this.ball.x - 4, this.ball.y - 4, 3, 0, Math.PI * 2);
     this.ctx.fill();
 
     this.ctx.restore();
@@ -745,6 +1243,7 @@ function initApp() {
     }
 
     window.tournament.activeMatch = next.match;
+    // next.match.p1 is guaranteed to be the user!
     game.setupMatch(next.match.p1, next.match.p2, next.stage);
     showScreen('game');
   });
@@ -760,7 +1259,8 @@ function initApp() {
 
     const match = window.tournament.activeMatch;
     if (match) {
-      const winner = winnerId === 1 ? match.p1 : match.p2;
+      // winnerId === 1 is always the user (Team 1)
+      const winner = (winnerId === 1) ? match.p1 : match.p2;
       window.tournament.recordMatchResult(match, winner, scores);
       renderBracket();
 
@@ -853,7 +1353,7 @@ function initApp() {
       row.className = 'admin-row';
       row.innerHTML = `
         <span>#${idx + 1} <strong>${p.name}</strong> (${p.phone})</span>
-        <span style="color:#ffb703; font-family:monospace;">${p.code}</span>
+        <span style="color:#00f0ff; font-family:monospace;">${p.code}</span>
       `;
       table.appendChild(row);
     });
