@@ -55,6 +55,7 @@ class FootballGame {
     this.t2Color = "#00b0ff";
     this.isT2Bot = true;
 
+    this.resetPitch();
     this.initListeners();
   }
 
@@ -272,6 +273,7 @@ class FootballGame {
 
   // MAIN PHYSICS UPDATE LOOP
   updatePhysics() {
+    if (!this.ball) return;
     let moving = false;
     const threshold = 0.08;
 
@@ -450,6 +452,7 @@ class FootballGame {
 
   // RENDER PITCH & ASSETS
   render() {
+    if (!this.ball) return;
     this.ctx.clearRect(0, 0, this.width, this.height);
 
     // 1. Draw Football Turf Grass with Alternate Stripes
@@ -613,7 +616,7 @@ class FootballGame {
 }
 
 // APPLICATION UI CONTROLLER
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
   const game = new FootballGame();
   game.loop();
 
@@ -691,8 +694,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Practice Mode Button
   document.getElementById('btn-practice').addEventListener('click', () => {
+    if (window.sound) window.sound.init();
     window.tournament.isPracticeMode = true;
-    const user = { name: 'You (Practice)', team: 'Nairobi Stars', isUser: true };
+    const user = { name: 'You (Practice)', team: selectedTeam, isUser: true };
     const bot = { name: 'Bot Trainer', team: 'Mombasa Sharks', isUser: false };
     game.setupMatch(user, bot, 'Practice Match', true);
     showScreen('game');
@@ -854,4 +858,10 @@ document.addEventListener('DOMContentLoaded', () => {
       table.appendChild(row);
     });
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

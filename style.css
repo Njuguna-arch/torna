@@ -368,22 +368,41 @@ body {
 
 .team-btn {
   background: var(--bg-card-subtle);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 2px solid rgba(255,255,255,0.08);
   color: #fff;
-  padding: 10px 8px;
+  padding: 11px 10px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
+  justify-content: flex-start;
+  gap: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.team-btn:hover {
+  border-color: rgba(255,255,255,0.25);
+  background: #253140;
 }
 
 .team-btn.selected {
   border-color: var(--accent-green);
-  background: rgba(0, 230, 118, 0.12);
+  background: rgba(0, 230, 118, 0.2);
+  box-shadow: 0 0 12px rgba(0, 230, 118, 0.35);
+  font-weight: 700;
+  transform: translateY(-1px);
+}
+
+.team-btn.selected::after {
+  content: '✓';
+  position: absolute;
+  right: 10px;
+  font-size: 14px;
+  color: var(--accent-green);
+  font-weight: 900;
 }
 
 .team-dot {
