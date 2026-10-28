@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TORNA - Real-Money Football Tournament</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app">
+    <!-- TOP NAVIGATION BAR -->
+    <header class="app-header">
+      <div class="logo">
+        <span class="logo-icon">⚽</span>
+        <span class="logo-text">TORNA</span>
+        <span class="logo-badge">CHAMPIONSHIP</span>
+      </div>
+      <div class="header-pills">
+        <div class="pill prize-pill">
+          <span class="label">Prize Pool</span>
+          <span class="val" id="top-pool">Ksh 800</span>
+        </div>
+        <div class="pill win-pill">
+          <span class="label">Winner Gets (70%)</span>
+          <span class="val" id="top-win">Ksh 560</span>
+        </div>
+        <button id="admin-toggle-btn" class="admin-btn" title="Admin Control">⚙️</button>
+      </div>
+    </header>
+
+    <!-- MAIN VIEW CONTAINER -->
+    <main id="main-content">
+      
+      <!-- SCREEN 1: LOBBY & M-PESA ENTRY SCREEN -->
+      <section id="lobby-screen" class="screen active">
+        <div class="hero-banner">
+          <div class="tag">KNOCKOUT TOURNAMENT • 8 PLAYERS</div>
+          <h1>ENTER THE PITCH & WIN CASH</h1>
+          <p>Stake <strong>Ksh 100</strong>. Knock out 3 opponents. Take home <strong>Ksh 560</strong> instantly via M-Pesa!</p>
+        </div>
+
+        <div class="tournament-status-card">
+          <div class="status-header">
+            <h3>Current Tournament #<span id="tourney-id">104</span></h3>
+            <span class="badge live-badge">SLOTS FILLING</span>
+          </div>
+
+          <div class="progress-container">
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="slots-fill" style="width: 25%;"></div>
+            </div>
+            <div class="progress-label">
+              <span id="slots-count">2/8 Players Registered</span>
+              <span class="entry-tag">Entry: Ksh 100</span>
+            </div>
+          </div>
+
+          <div class="registered-list-preview" id="registered-preview">
+            <!-- Dynamic avatar chips of registered players -->
+          </div>
+        </div>
+
+        <!-- M-PESA PAYMENT & REGISTRATION CARD -->
+        <div class="entry-form-card">
+          <h2>JOIN TOURNAMENT</h2>
+          
+          <div class="mpesa-instructions">
+            <div class="mpesa-logo">
+              <span>M-PESA</span>
+            </div>
+            <div class="mpesa-steps">
+              <p><strong>Step 1:</strong> Go to M-Pesa &gt; Send Money (or Till)</p>
+              <p><strong>Step 2:</strong> Send <strong>Ksh 100</strong> to: <span class="highlight-phone" id="mpesa-pay-target">0712 345 678 (TORNA ADMIN)</span></p>
+              <p><strong>Step 3:</strong> Fill in your details and M-Pesa Ref code below:</p>
+            </div>
+          </div>
+
+          <form id="join-form" onsubmit="return false;">
+            <div class="input-group">
+              <label for="player-name">Player Nickname / Gamer Tag</label>
+              <input type="text" id="player-name" placeholder="e.g. NairobiStriker" maxlength="15" required />
+            </div>
+
+            <div class="input-group">
+              <label for="player-phone">Your M-Pesa Phone Number (For Payout)</label>
+              <input type="tel" id="player-phone" placeholder="07XXXXXXXX or 01XXXXXXXX" maxlength="10" required />
+            </div>
+
+            <div class="input-group">
+              <label for="player-code">M-Pesa Transaction Code</label>
+              <input type="text" id="player-code" placeholder="e.g. TCH94KL01M" maxlength="12" style="text-transform: uppercase;" required />
+            </div>
+
+            <div class="input-group">
+              <label>Select Your Club Team</label>
+              <div class="team-selector" id="team-selector">
+                <button type="button" class="team-btn selected" data-team="Nairobi Stars" data-c1="#00E676" data-c2="#1b5e20">
+                  <span class="team-dot" style="background:#00E676"></span> Nairobi Stars
+                </button>
+                <button type="button" class="team-btn" data-team="Mombasa Sharks" data-c1="#00B0FF" data-c2="#01579b">
+                  <span class="team-dot" style="background:#00B0FF"></span> Mombasa Sharks
+                </button>
+                <button type="button" class="team-btn" data-team="Rift Valley Rhinos" data-c1="#FF9100" data-c2="#e65100">
+                  <span class="team-dot" style="background:#FF9100"></span> Rift Rhinos
+                </button>
+                <button type="button" class="team-btn" data-team="Kisumu Hawks" data-c1="#FF1744" data-c2="#b71c1c">
+                  <span class="team-dot" style="background:#FF1744"></span> Kisumu Hawks
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" id="btn-submit-entry" class="action-btn join-btn">
+              SUBMIT & ENTER TOURNAMENT
+            </button>
+          </form>
+        </div>
+
+        <!-- QUICK PRACTICE MATCH BUTTON -->
+        <div class="quick-play-card">
+          <p>Want to practice aiming and shooting before the real money match?</p>
+          <button id="btn-practice" class="secondary-btn">⚽ PRACTICE VS BOT (FREE)</button>
+        </div>
+      </section>
+
+      <!-- SCREEN 2: TOURNAMENT BRACKET SCREEN -->
+      <section id="bracket-screen" class="screen">
+        <div class="screen-header">
+          <h2>KNOCKOUT BRACKET</h2>
+          <span class="sub">Win 3 matches to claim Ksh 560</span>
+        </div>
+
+        <div class="bracket-wrapper">
+          <!-- QUARTERFINALS -->
+          <div class="bracket-col">
+            <h4 class="col-title">QUARTER-FINALS</h4>
+            <div class="match-slot" id="match-q1">
+              <div class="slot-player p1"><span class="name">--</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">--</span><span class="score">-</span></div>
+            </div>
+            <div class="match-slot" id="match-q2">
+              <div class="slot-player p1"><span class="name">--</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">--</span><span class="score">-</span></div>
+            </div>
+            <div class="match-slot" id="match-q3">
+              <div class="slot-player p1"><span class="name">--</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">--</span><span class="score">-</span></div>
+            </div>
+            <div class="match-slot" id="match-q4">
+              <div class="slot-player p1"><span class="name">--</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">--</span><span class="score">-</span></div>
+            </div>
+          </div>
+
+          <!-- SEMIFINALS -->
+          <div class="bracket-col">
+            <h4 class="col-title">SEMI-FINALS</h4>
+            <div class="match-slot sem" id="match-s1">
+              <div class="slot-player p1"><span class="name">TBD</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">TBD</span><span class="score">-</span></div>
+            </div>
+            <div class="match-slot sem" id="match-s2">
+              <div class="slot-player p1"><span class="name">TBD</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">TBD</span><span class="score">-</span></div>
+            </div>
+          </div>
+
+          <!-- FINAL -->
+          <div class="bracket-col final-col">
+            <h4 class="col-title">🏆 GRAND FINAL</h4>
+            <div class="match-slot fin" id="match-final">
+              <div class="slot-player p1"><span class="name">TBD</span><span class="score">-</span></div>
+              <div class="slot-player p2"><span class="name">TBD</span><span class="score">-</span></div>
+            </div>
+            <div class="trophy-badge">
+              <span>PRIZE: KSH 560</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bracket-controls">
+          <button id="btn-start-next-match" class="action-btn">PROCEED TO MY MATCH</button>
+        </div>
+      </section>
+
+      <!-- SCREEN 3: GAMEPLAY PITCH SCREEN -->
+      <section id="game-screen" class="screen">
+        <!-- SCOREBOARD BAR -->
+        <div class="scoreboard-bar">
+          <div class="team-side left-side">
+            <div class="team-badge" id="hud-badge-1"></div>
+            <div class="team-info">
+              <div class="name" id="hud-p1-name">Player 1</div>
+              <div class="sub-label">TURN</div>
+            </div>
+            <div class="score-digit" id="hud-p1-score">0</div>
+          </div>
+
+          <div class="match-center-info">
+            <div class="turn-timer" id="turn-timer-display">15s</div>
+            <div class="match-round-tag" id="hud-round-tag">Quarter-Final</div>
+          </div>
+
+          <div class="team-side right-side">
+            <div class="score-digit" id="hud-p2-score">0</div>
+            <div class="team-info">
+              <div class="name" id="hud-p2-name">Player 2</div>
+              <div class="sub-label">WAITING</div>
+            </div>
+            <div class="team-badge" id="hud-badge-2"></div>
+          </div>
+        </div>
+
+        <!-- CANVAS STADIUM CONTAINER -->
+        <div class="pitch-container" id="pitch-container">
+          <canvas id="footballCanvas"></canvas>
+          
+          <!-- OVERLAY BANNER FOR GOALS & FOULS -->
+          <div id="goal-overlay" class="goal-announcement hidden">
+            <div class="goal-text">GOOOOAAAL!</div>
+            <div class="scorer-text" id="scorer-banner">Nairobi Stars</div>
+          </div>
+
+          <!-- HOW TO PLAY HINT (TOUCH & DRAG) -->
+          <div class="pitch-hint" id="pitch-hint">
+            Drag player disc backward to aim & release to kick!
+          </div>
+        </div>
+
+        <div class="game-bottom-bar">
+          <button id="btn-surrender" class="sm-btn danger">Forfeit Match</button>
+          <div class="target-goals">First to <strong>2 Goals</strong> Wins!</div>
+          <button id="btn-sound-toggle" class="sm-btn">🔊 Sound ON</button>
+        </div>
+      </section>
+
+      <!-- SCREEN 4: VICTORY & PAYOUT SCREEN -->
+      <section id="victory-screen" class="screen">
+        <div class="victory-card">
+          <div class="trophy-large">🏆</div>
+          <h1 id="champion-title">TOURNAMENT CHAMPION!</h1>
+          <p class="congrats-text" id="champion-name">Congratulations NairobiStriker</p>
+
+          <div class="payout-box">
+            <div class="payout-row">
+              <span>Total Tournament Pool (8x Ksh 100)</span>
+              <strong>Ksh 800</strong>
+            </div>
+            <div class="payout-row">
+              <span>Platform Service Commission (30%)</span>
+              <strong class="deduct">- Ksh 240</strong>
+            </div>
+            <hr />
+            <div class="payout-row total">
+              <span>WINNER CASHOUT (70%)</span>
+              <span class="win-cash" id="payout-amount">Ksh 560</span>
+            </div>
+          </div>
+
+          <div class="mpesa-payout-status">
+            <div class="status-indicator live"></div>
+            <div>
+              <p>Payout M-Pesa: <strong id="payout-phone">0712345678</strong></p>
+              <small>The Admin will dispatch Ksh 560 via M-Pesa to your number within 5 minutes!</small>
+            </div>
+          </div>
+
+          <button id="btn-play-again" class="action-btn join-btn">RETURN TO LOBBY</button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ADMIN MODAL / PANEL -->
+    <div id="admin-modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>ADMIN TOURNAMENT MANAGER</h3>
+          <button id="admin-close-btn" class="close-x">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="admin-tip">Use this dashboard to verify incoming Ksh 100 M-Pesa codes and manage tournament slots.</p>
+          
+          <div class="admin-section">
+            <h4>Quick Actions</h4>
+            <div class="admin-btn-grid">
+              <button id="adm-fill-bots" class="adm-btn">Fill Remaining with AI Players</button>
+              <button id="adm-reset-tourney" class="adm-btn danger">Reset Tournament</button>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <h4>Update Admin M-Pesa Contact</h4>
+            <div class="input-group">
+              <input type="text" id="adm-phone-input" value="0712 345 678 (TORNA ADMIN)" />
+              <button id="adm-save-phone" class="adm-btn" style="margin-top:6px;">Save Phone</button>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <h4>Registered Competitors & M-Pesa Codes</h4>
+            <div id="admin-players-table" class="admin-table">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SCRIPT FILES -->
+  <script src="audio.js"></script>
+  <script src="tournament.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
